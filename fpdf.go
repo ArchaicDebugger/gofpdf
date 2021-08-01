@@ -2689,9 +2689,9 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 						newAlignStr = "L"
 					}
 				}
-				f.CellFormat(w, h, string(srune[j:i]), b, 2, newAlignStr, fill, 0, "")
+				f.MultiCellLineMarkup(w, h, string(srune[j:i]), b, 2, newAlignStr, fill, 0, "")
 			} else {
-				f.CellFormat(w, h, s[j:i], b, 2, alignStr, fill, 0, "")
+				f.MultiCellLineMarkup(w, h, s[j:i], b, 2, alignStr, fill, 0, "")
 			}
 			i++
 			sep = -1
@@ -2729,9 +2729,17 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 					f.out("0 Tw")
 				}
 				if f.isCurrentUTF8 {
-					f.CellFormat(w, h, string(srune[j:i]), b, 2, alignStr, fill, 0, "")
+					str := string(srune[j:i])
+					splitStr := strings.Split(str, "<")
+					for _, chunk := range splitStr {
+						f.MultiCellLineMarkup(w, h, chunk, b, 2, alignStr, fill, 0, "")
+					}
 				} else {
-					f.CellFormat(w, h, s[j:i], b, 2, alignStr, fill, 0, "")
+					str := s[j:i]
+					splitStr := strings.Split(str, "<")
+					for _, chunk := range splitStr {
+						f.MultiCellLineMarkup(w, h, chunk, b, 2, alignStr, fill, 0, "")
+					}
 				}
 			} else {
 				if alignStr == "J" {
@@ -2743,9 +2751,9 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 					f.outf("%.3f Tw", f.ws*f.k)
 				}
 				if f.isCurrentUTF8 {
-					f.CellFormat(w, h, string(srune[j:sep]), b, 2, alignStr, fill, 0, "")
+					f.MultiCellLineMarkup(w, h, string(srune[j:sep]), b, 2, alignStr, fill, 0, "")
 				} else {
-					f.CellFormat(w, h, s[j:sep], b, 2, alignStr, fill, 0, "")
+					f.MultiCellLineMarkup(w, h, s[j:sep], b, 2, alignStr, fill, 0, "")
 				}
 				i = sep + 1
 			}
@@ -2777,11 +2785,59 @@ func (f *Fpdf) MultiCell(w, h float64, txtStr, borderStr, alignStr string, fill 
 				alignStr = ""
 			}
 		}
-		f.CellFormat(w, h, string(srune[j:i]), b, 2, alignStr, fill, 0, "")
+		f.MultiCellLineMarkup(w, h, string(srune[j:i]), b, 2, alignStr, fill, 0, "")
 	} else {
-		f.CellFormat(w, h, s[j:i], b, 2, alignStr, fill, 0, "")
+		f.MultiCellLineMarkup(w, h, s[j:i], b, 2, alignStr, fill, 0, "")
 	}
 	f.x = f.lMargin
+}
+
+func (f *Fpdf) MultiCellLineMarkup(w, h float64, txtStr, borderStr string, ln int,
+	alignStr string, fill bool, link int, linkStr string) {
+
+	largelySplitStr := strings.Split(txtStr, "<M ")
+	needsFill := fill
+
+	//startingY := f.y
+	startingX := f.x
+
+	for index, chunk := range largelySplitStr {
+		prevY := f.y
+		prevX := f.x
+
+		if index == 0 {
+			f.CellFormat(w, h, chunk, borderStr, ln, alignStr, needsFill, link, linkStr)
+			f.SetY(prevY)
+			f.SetX(prevX + f.GetStringWidth(chunk))
+			prevX = f.x
+		} else {
+			styleDiffs := strings.Split(chunk, "</M>")
+			prevStyle := f.fontStyle
+
+			firstDiff := styleDiffs[0]
+			firstDiffSplit := strings.Split(firstDiff, ">")
+			style := firstDiffSplit[0]
+			text := firstDiffSplit[1]
+
+			f.SetFontStyle(style)
+
+			f.CellFormat(w, h, text, borderStr, ln, alignStr, needsFill, link, linkStr)
+			f.SetY(prevY)
+			f.SetX(prevX + f.GetStringWidth(text))
+			prevX = f.x
+
+			f.SetFontStyle(prevStyle)
+			f.CellFormat(w, h, styleDiffs[1], borderStr, ln, alignStr, needsFill, link, linkStr)
+			f.SetY(prevY)
+			f.SetX(prevX + f.GetStringWidth(styleDiffs[1]))
+			prevX = f.x
+		}
+
+		needsFill = false
+	}
+
+	f.y += h
+	f.x = startingX
 }
 
 // write outputs text in flowing mode
